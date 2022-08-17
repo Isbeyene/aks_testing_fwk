@@ -281,7 +281,7 @@ if [ ! -z $fwkrg ];then
 
     if [[ $reportingnodepool -eq 0 ]]; then
         echo "INFO:Adding reporting nodepool..."
-        az aks nodepool add --cluster-name $aksName -g $fwkrg --name reporterpool --node-count 1 --node-vm-size Standard_D8s_v3
+        az aks nodepool add --cluster-name $aksName -g $fwkrg --name reporterpool --node-count 1 --node-vm-size Standard_D2s_v3
         reporternode=$(kubectl get nodes |awk '/aks-reporterpool/ {print $1}')
         echo "INFO: Tainting reporting node..."
         kubectl taint nodes $reporternode sku=reporter:NoSchedule
@@ -298,7 +298,7 @@ else
 
     if [[ $reportingnodepool -eq 0 ]]; then
         echo "INFO:Adding reporting nodepool..."
-        az aks nodepool add --cluster-name $aksName -g $resourceGroup --name reporterpool --node-count 1 --node-vm-size Standard_D8s_v3
+        az aks nodepool add --cluster-name $aksName -g $resourceGroup --name reporterpool --node-count 1 --node-vm-size Standard_D2s_v3
         reporternode=$(kubectl get nodes |awk '/aks-reporterpool/ {print $1}')
         echo "INFO: Tainting reporting node..."
         kubectl taint nodes $reporternode sku=reporter:NoSchedule
@@ -306,6 +306,10 @@ else
     fi
 fi
 echo "INFO:Generating yaml files from templates..."
+
+#Attach the acr to our aks
+echo "Attaching acr to our aks...."
+az aks update --name $aksName --resource-group $resourceGroup --attach-acr $acrName
 
 # read the yaml template from a file and substitute the string 
 # ###acrname### with the value of the acrName variable
@@ -490,7 +494,7 @@ else
 fi
 
 servicePrincipal=$(echo $sp |awk '{print $1}')
-clientSecret=$(echo $sp |awk '{print $4}')
+clientSecret=$(echo $sp |awk '{print $3}')
 
 if [[ -z ${servicePrincipal}  ]] || [[ -z ${clientSecret}  ]] ;
 then
@@ -545,11 +549,10 @@ fi
 
 ##build and push the master,slave and reporter images to acr
 
-
 if ! az acr repository show -n $acrName --image testframework/jmetermaster:latest &>/dev/null; then
     echo "INFO:master image does not exist....creating..."
     echo "INFO:building jmeter master container and pushing to [ $acrName ] "
-    az acr build -t testframework/jmetermaster:latest -f ../master/Dockerfile -r $acrName .
+    az acr build -g $resourceGroup -t testframework/jmetermaster:latest -f ../master/Dockerfile -r $acrName .
     if [ $? -ne 0 ]
     then
         echo "ERROR:Failed to build and push master container error: '${?}'"
@@ -564,7 +567,7 @@ fi
 if ! az acr repository show -n $acrName --image testframework/jmeterslave:latest &>/dev/null; then
     echo "INFO:slave image does not exist....creating..."
     echo "INFO:building jmeter slave container and pushing to [ $acrName ]"
-    az acr build -t testframework/jmeterslave:latest -f ../slave/Dockerfile -r $acrName .
+    az acr build -g $resourceGroup -t testframework/jmeterslave:latest -f ../slave/Dockerfile -r $acrName .
     if [ $? -ne 0 ]
     then
         echo "ERROR:Failed to build and push slave error: '${?}'"
@@ -579,7 +582,7 @@ fi
 if ! az acr repository show -n $acrName --image testframework/reporter:latest &>/dev/null; then
     echo "INFO:slave image does not exist....creating..."
     echo "INFO:building jmeter reporter container and pushing to [ $acrName ]"
-    az acr build -t testframework/reporter:latest -f ../reporter/Dockerfile -r $acrName .
+    az acr build -g $resourceGroup -t testframework/reporter:latest -f ../reporter/Dockerfile -r $acrName .
     if [ $? -ne 0 ]
     then
         echo "ERROR:Failed to build and push slave error: '${?}'"
@@ -596,8 +599,8 @@ if [ ! -z ${vnetName} ]; then
     az role assignment create --assignee $servicePrincipal --scope $VNET_ID --role Contributor
     ##create vnet and subnet if required for deployment
     echo "INFO: Creating AKS cluster with Vnet deployment"
-    ##create default AKS cluster with node size Standard_D2s_V3
-    echo "INFO:Creating AKS cluster $aksName with D2s_v3 nodes...."
+    ##create default AKS cluster with node size Standard_D16s_v5
+    echo "INFO:Creating AKS cluster $aksName with D16s_v5 nodes...."
     if [ ! -z ${fwkrg} ]; then
         az aks create \
                 --resource-group $fwkrg \
@@ -610,7 +613,7 @@ if [ ! -z ${vnetName} ]; then
                 --max-count 50 \
                 --generate-ssh-keys \
                 --disable-rbac \
-                --node-vm-size Standard_D2s_v3 \
+                --node-vm-size Standard_D16s_v5 \
                 --location $location \
                 --vnet-subnet-id $SUBNET_ID
 
@@ -631,7 +634,7 @@ if [ ! -z ${vnetName} ]; then
                 --max-count 50 \
                 --generate-ssh-keys \
                 --disable-rbac \
-                --node-vm-size Standard_D2s_v3 \
+                --node-vm-size Standard_D16s_v5 \
                 --location $location \
                 --vnet-subnet-id $SUBNET_ID
 
@@ -643,8 +646,8 @@ if [ ! -z ${vnetName} ]; then
     fi
 else
     echo "INFO: Framework Deployment will be without a Vnet"
-    ##create default AKS cluster with node size Standard_D2s_V3
-    echo "INFO:Creating AKS cluster $aksName with D2s_v3 nodes...."
+    ##create default AKS cluster with node size Standard_D16s_v5
+    echo "INFO:Creating AKS cluster $aksName with D16s_v5 nodes...."
     az aks create \
         --resource-group $resourceGroup \
         --name $aksName \
@@ -656,7 +659,7 @@ else
         --max-count 50 \
         --generate-ssh-keys \
 	    --disable-rbac \
-	    --node-vm-size Standard_D2s_v3 \
+	    --node-vm-size Standard_D16s_v5 \
 	    --location $location
 
     if [ $? -ne 0 ]
